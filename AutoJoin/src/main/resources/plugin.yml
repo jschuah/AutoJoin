@@ -1,0 +1,5 @@
+name: AutoJoin
+version: ${project.version}
+main: ${main.class}
+author: KingAsiimov
+api-version: 1.19.3
