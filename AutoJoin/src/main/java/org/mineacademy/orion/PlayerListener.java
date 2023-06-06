@@ -8,6 +8,9 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.mineacademy.fo.Common;
+import java.util.Arrays;
+import java.util.List;
+
 
 public class PlayerListener implements Listener {
 
@@ -21,7 +24,7 @@ public class PlayerListener implements Listener {
 		if (AutoJoin.predefinedNames.contains(player.getName())) {
 			AutoJoin.currentGroup.add(player);
 			Common.tellLater(2, player, "You've been automatically assigned a group!");
-			Common.tellLater(2, player, "Teleportation will commence once player limit reached.")
+			Common.tellLater(2, player, "Teleportation will commence once player limit reached.");
 
 			// When a group of 2 players is formed
 			if (AutoJoin.currentGroup.size() == AutoJoin.GROUP_SIZE) {
