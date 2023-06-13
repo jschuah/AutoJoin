@@ -1,5 +1,6 @@
 package org.mineacademy.orion;
 
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.Location;
 import org.mineacademy.fo.Common;
@@ -31,9 +32,13 @@ public class AutoJoin extends SimplePlugin {
 		predefinedNames.add("PLAI_2");
 		predefinedNames.add("PLAI_5");
 		predefinedNames.add("PLAI_0");
+		predefinedNames.add("KingAsiimov");
+		predefinedNames.add("KingAsiimovX");
+		predefinedNames.add("ArigatoSashimi");
 
 		instance = this;  // Set the instance
 	}
+
 
 	public static AutoJoin getInstance() {
 		return instance;  // Getter for the instance
