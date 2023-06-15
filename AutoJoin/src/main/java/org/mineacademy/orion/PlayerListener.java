@@ -48,47 +48,58 @@ public class PlayerListener implements Listener {
 			public void run() {
 				final World world = Bukkit.getWorld(worlds.get(AutoJoin.random.nextInt(worlds.size())));
 
-				// Generate random X and Z coordinates within a certain range
-				int x = AutoJoin.random.nextInt(1000) - 500;  // Value will be between -500 and 500
-				final int z = AutoJoin.random.nextInt(1000) - 500;  // Value will be between -500 and 500
+				int x = AutoJoin.random.nextInt(1000) - 500;
+				final int z = AutoJoin.random.nextInt(1000) - 500;
 
-				// Teleport all players in the group to this location and set it as their respawn point
 				for (final Player groupPlayer : AutoJoin.currentGroup) {
-					// Get the highest Y value at that X, Z coordinate
 					final int y = world.getHighestBlockYAt(x, z);
 
-					// Create a location object with these coordinates
 					final Location randomLocation = new Location(world, x, y, z);
 
 					groupPlayer.teleport(randomLocation);
 					groupPlayer.setBedSpawnLocation(randomLocation, true);
 					AutoJoin.respawnLocations.put(groupPlayer.getName(), randomLocation);
 
-					// Apply a blindness effect to the player for 5 seconds
 					groupPlayer.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 1));
 
-					// Show a title to the player
 					groupPlayer.sendTitle("§6Type /Audio if you haven't!", "", 10, 70, 20);
 
-					// Play a loud entity sound
 					groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
-					x += 1;  // Increment the x coordinate for next player
+					String prefix = generateRandomAlphanumericString();
+					String suffix = generateRandomAlphanumericString();
+
+					Bukkit.getScheduler().runTask(AutoJoin.getInstance(), new Runnable() {
+						@Override
+						public void run() {
+							Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "nte player " + groupPlayer.getName() + " prefix " + prefix);
+							Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "nte player " + groupPlayer.getName() + " suffix " + suffix);
+						}
+					});
+
+					x += 1;
 				}
 
-				// Then clear the current group
 				AutoJoin.currentGroup.clear();
 			}
-		}, 20L);  // 20 ticks = 1 second
+		}, 20L);
 	}
 
+	private String generateRandomAlphanumericString() {
+		String alphaNumericString = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+		StringBuilder builder = new StringBuilder();
+		for(int i = 0; i < 5; i++) {
+			int character = (int)(Math.random() * alphaNumericString.length());
+			builder.append(alphaNumericString.charAt(character));
+		}
+		return builder.toString();
+	}
 
 	@EventHandler
 	public void onPlayerDeath(PlayerDeathEvent event) {
 		Player player = event.getEntity();
 		World world = player.getWorld();
 
-		// Check if the player is in one of the specified worlds
 		if (worlds.contains(world.getName())) {
 			Bukkit.getScheduler().runTaskLater(AutoJoin.getInstance(), new Runnable() {
 				@Override
@@ -109,20 +120,16 @@ public class PlayerListener implements Listener {
 	@EventHandler
 	public void onRespawn(PlayerRespawnEvent event) {
 		Player player = event.getPlayer();
-		// Check if the respawn event is due to a player death and not due to using a bed or /kill command
 		if (!event.isBedSpawn() && AutoJoin.respawnLocations.containsKey(player.getName())) {
 			event.setRespawnLocation(AutoJoin.respawnLocations.get(player.getName()));
 
-			// Show a title to the player
 			player.sendTitle("§cYou've been reborn!", "", 10, 70, 20);
 
-			// Apply a blindness effect to the player for 5 seconds
 			boolean blindnessAdded = player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 100, 1));
 			if (!blindnessAdded) {
 				AutoJoin.getInstance().getLogger().info("Could not apply blindness effect to the player");
 			}
 
-			// Play a loud entity sound
 			player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 5.0f, 1.0f);
 			if (!player.getWorld().getPlayers().contains(player)) {
 				AutoJoin.getInstance().getLogger().info("Player not found in the world when trying to play the sound");
@@ -134,7 +141,6 @@ public class PlayerListener implements Listener {
 	public void onPlayerQuit(PlayerQuitEvent event) {
 		Player player = event.getPlayer();
 
-		// Remove player from the current group if they are in it
 		if (AutoJoin.currentGroup.contains(player)) {
 			AutoJoin.currentGroup.remove(player);
 		}
@@ -144,12 +150,8 @@ public class PlayerListener implements Listener {
 	public void onPlayerKick(PlayerKickEvent event) {
 		Player player = event.getPlayer();
 
-		// Remove player from the current group if they are in it
 		if (AutoJoin.currentGroup.contains(player)) {
 			AutoJoin.currentGroup.remove(player);
 		}
 	}
 }
-
-
-
