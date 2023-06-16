@@ -17,6 +17,9 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerKickEvent;
 
+import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 
@@ -62,7 +65,8 @@ public class PlayerListener implements Listener {
 
 					groupPlayer.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 1));
 
-					groupPlayer.sendTitle("§6Type /Audio if you haven't!", "", 10, 70, 20);
+					groupPlayer.sendTitle("§6Type /Audio if you haven't!", getCurrentUTCTime(), 10, 70, 20);
+
 
 					groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
@@ -123,7 +127,7 @@ public class PlayerListener implements Listener {
 		if (!event.isBedSpawn() && AutoJoin.respawnLocations.containsKey(player.getName())) {
 			event.setRespawnLocation(AutoJoin.respawnLocations.get(player.getName()));
 
-			player.sendTitle("§cYou've been reborn!", "", 10, 70, 20);
+			player.sendTitle("§cYou've been reborn!", getCurrentUTCTime(), 10, 70, 20);
 
 			boolean blindnessAdded = player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 100, 1));
 			if (!blindnessAdded) {
@@ -153,5 +157,11 @@ public class PlayerListener implements Listener {
 		if (AutoJoin.currentGroup.contains(player)) {
 			AutoJoin.currentGroup.remove(player);
 		}
+	}
+
+	private String getCurrentUTCTime() {
+		ZonedDateTime utc = ZonedDateTime.now(ZoneOffset.UTC);
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+		return utc.format(formatter);
 	}
 }
