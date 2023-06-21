@@ -68,13 +68,9 @@ public class PlayerListener implements Listener {
 
 				groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
-				String prefix = generateRandomAlphanumericString();
-				String suffix = generateRandomAlphanumericString();
 				String skin = skins.get(AutoJoin.random.nextInt(skins.size()));
 
 				Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
-					Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "nte player " + groupPlayer.getName() + " prefix " + prefix);
-					Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "nte player " + groupPlayer.getName() + " suffix " + suffix);
 					Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "skin set " + groupPlayer.getName() + " " + skin);
 				});
 
@@ -155,4 +151,5 @@ public class PlayerListener implements Listener {
 		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm:ss");
 		return utc.format(formatter);
 	}
+
 }
