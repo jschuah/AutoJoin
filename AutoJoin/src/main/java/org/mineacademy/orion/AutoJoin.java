@@ -1,16 +1,10 @@
 package org.mineacademy.orion;
 
-import org.bukkit.Bukkit;
-import org.bukkit.entity.Player;
 import org.bukkit.Location;
-import org.mineacademy.fo.Common;
+import org.bukkit.entity.Player;
 import org.mineacademy.fo.plugin.SimplePlugin;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 
 public class AutoJoin extends SimplePlugin {
 
