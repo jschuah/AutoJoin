@@ -1,84 +1,238 @@
 package org.mineacademy.orion;
 
+import com.earth2me.essentials.Essentials;
+import net.ess3.api.IWarps;
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerKickEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.server.PluginDisableEvent;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.server.PluginDisableEvent;
-import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
+import org.json.JSONObject;
 import org.mineacademy.fo.Common;
-import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerKickEvent;
 
+import java.io.OutputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class PlayerListener implements Listener {
 
-	private static final List<String> worlds = Arrays.asList("plai_one", "plai_two", "plai_three");  // replace with your world names
+	//TODO: Players get teleported to different Warps.
+	//TODO: Include world name.
+
+	private static final List<String> worlds = Arrays.asList("plai_one", "plai_two", "plai_three");
 	private static final List<String> skins = Arrays.asList("SkyTheKidRS", "Herobrine", "CaptainSparklez", "Notch");
+	private static final Map<String, Group> warpOccupancy = new HashMap<>();
+	private static final List<String> warps = Arrays.asList("r1", "r2", "r3", "r5");
+	private TeleportTask teleportTask;
+	private final Map<Player, BukkitTask> countdownTasks = new HashMap<>();
+
 
 	@EventHandler
 	public void onJoin(final PlayerJoinEvent event) {
 		final Player player = event.getPlayer();
 
-		// Check if the player is in the predefined list and the current group is less than the group size
-		if (AutoJoin.predefinedNames.contains(player.getName()) && AutoJoin.currentGroup.size() < AutoJoin.GROUP_SIZE) {
-
+		if (AutoJoin.predefinedNames.contains(player.getName())) {
 			AutoJoin.currentGroup.add(player);
-			Common.tellLater(2, player, "§b You've been automatically assigned a group!");
-			Common.tellLater(2, player, "§b Teleportation will commence once there are enough players.");
+			Common.tellLater(2, player, "§b You've been automatically assigned to a group!");
+			Common.tellLater(2, player, "§b Teleportation will commence once there are enough players or the wait time has passed.");
 
-			// When a group of GROUP_SIZE players is formed
-			if (AutoJoin.currentGroup.size() == AutoJoin.GROUP_SIZE) {
-				teleportGroup();
+			if (teleportTask != null) {
+				teleportTask.cancel();
+			}
+
+			teleportTask = new TeleportTask(this);
+			long waitTimeTicks = teleportTask.getWaitTime(AutoJoin.currentGroup.size()) / 50;
+			teleportTask.runTaskLater(AutoJoin.getInstance(), waitTimeTicks);
+
+			for (Player groupPlayer : AutoJoin.currentGroup) {
+				startCountdown(groupPlayer, waitTimeTicks);
 			}
 		}
 	}
 
-	private void teleportGroup() {
-		Bukkit.getScheduler().runTaskLater(AutoJoin.getInstance(), () -> {
-			final World world = Bukkit.getWorld(worlds.get(AutoJoin.random.nextInt(worlds.size())));
 
-			int x = AutoJoin.random.nextInt(1000) - 500;
-			final int z = AutoJoin.random.nextInt(1000) - 500;
 
-			for (final Player groupPlayer : AutoJoin.currentGroup) {
-				final int y = world.getHighestBlockYAt(x, z);
 
-				final Location randomLocation = new Location(world, x, y, z);
+	private void sendActionBar(Player player, String message, int groupSize) {
+		player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message + " Current Group Size: " + groupSize + "/3"));
+	}
 
-				groupPlayer.teleport(randomLocation);
-				groupPlayer.setBedSpawnLocation(randomLocation, true);
-				AutoJoin.respawnLocations.put(groupPlayer.getName(), randomLocation);
+	private void startCountdown(Player player, long waitTimeTicks) {
+		if (countdownTasks.containsKey(player)) {
+			countdownTasks.get(player).cancel();
+		}
 
-				groupPlayer.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 1));
+		BukkitTask countdownTask = new BukkitRunnable() {
+			private long timeRemaining = waitTimeTicks;
 
-				groupPlayer.sendTitle("§6Type /Audio if you haven't!", getCurrentUTCTime(), 10, 70, 20);
-
-				groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
-
-				String skin = skins.get(AutoJoin.random.nextInt(skins.size()));
-
-				Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
-					Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "skin set " + groupPlayer.getName() + " " + skin);
-				});
-
-				x += 1;
+			@Override
+			public void run() {
+				if (timeRemaining <= 0) {
+					this.cancel();
+					countdownTasks.remove(player);
+					if (AutoJoin.currentGroup.contains(player)) {
+						teleportGroup();
+					}
+				} else {
+					sendActionBar(player, "Teleporting in " + timeRemaining / 20 + " seconds...", AutoJoin.currentGroup.size());
+					timeRemaining -= 20;
+				}
 			}
+		}.runTaskTimer(AutoJoin.getInstance(), 0, 20);
 
-			AutoJoin.currentGroup.clear();
-		}, 20L);
+		countdownTasks.put(player, countdownTask);
+	}
+
+
+
+	protected void teleportGroup() {
+		if (!AutoJoin.currentGroup.isEmpty()) {
+			Bukkit.getScheduler().runTaskLater(AutoJoin.getInstance(), () -> {
+				final String worldName = worlds.get(AutoJoin.random.nextInt(worlds.size()));
+				final World world = Bukkit.getWorld(worldName);
+
+				int x = AutoJoin.random.nextInt(1000) - 500;
+				final int z = AutoJoin.random.nextInt(1000) - 500;
+
+				for (final Player groupPlayer : AutoJoin.currentGroup) {
+					final int y = world.getHighestBlockYAt(x, z);
+					final Location randomLocation;
+
+					if (worldName.equals("plai_three")) {
+						// pick a random warp
+						String randomWarp = warps.get(AutoJoin.random.nextInt(warps.size()));
+						try {
+							Essentials ess = (Essentials) Bukkit.getPluginManager().getPlugin("Essentials");
+							IWarps warpAPI = ess.getWarps();
+							randomLocation = warpAPI.getWarp(randomWarp);
+							if (warpOccupancy.containsKey(randomWarp) && !warpOccupancy.get(randomWarp).isEmpty()) {
+								// Warp is occupied, wait or teleport to another warp
+								continue;
+							} else {
+								// Warp is free, mark it as occupied
+								warpOccupancy.put(randomWarp, new Group(AutoJoin.currentGroup));
+							}
+						} catch (Exception e) {
+							e.printStackTrace();
+							return;
+						}
+					} else {
+						randomLocation = new Location(world, x, y, z);
+					}
+
+					groupPlayer.teleport(randomLocation);
+					groupPlayer.setBedSpawnLocation(randomLocation, true);
+					AutoJoin.respawnLocations.put(groupPlayer.getName(), randomLocation);
+
+					groupPlayer.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 1));
+
+					groupPlayer.sendTitle("§6Type /Audio if you haven't!", getCurrentUTCTime(), 10, 70, 20);
+
+					groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
+
+					String skin = skins.get(AutoJoin.random.nextInt(skins.size()));
+
+					Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
+						Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "skin set " + groupPlayer.getName() + " " + skin);
+					});
+
+					x += 1;
+
+					// Cancel any ongoing countdown for the player
+					BukkitTask countdownTask = countdownTasks.remove(groupPlayer);
+					if (countdownTask != null) {
+						countdownTask.cancel();
+					}
+				}
+
+				// Send a POST to the ip-addresses of the EC2 instances so they can create a new
+				// file with the proper names for S3 bucket location.
+				for (final Player groupPlayer : AutoJoin.currentGroup) {
+					String playerName = groupPlayer.getName();
+					String currentWorld = world.getName();
+					// Get current time
+					ZonedDateTime utc = ZonedDateTime.now(ZoneOffset.UTC);
+
+					// Create a JSON object with the data
+					JSONObject jsonObject = new JSONObject();
+					jsonObject.put("username", playerName);
+					jsonObject.put("currentWorld", currentWorld);
+					jsonObject.put("time", utc.toString());
+
+					// Convert the JSON object to a string
+					String jsonInputString = jsonObject.toString();
+
+					try {
+						// Create a Url object from the IP address
+						URL url = new URL("https://2i3bwawhp6.execute-api.us-west-2.amazonaws.com/connect-mc-server-to-ec2");
+
+						// Open a connection to the URL
+						HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+						// Set the request method to POST
+						conn.setRequestMethod("POST");
+
+						// Set the request content type to application/json
+						conn.setRequestProperty("Content-Type", "application/json; utf-8");
+
+						// Enable input and output streams
+						conn.setDoOutput(true);
+
+						// Write the JSON input string to the output stream
+						try (OutputStream os = conn.getOutputStream()) {
+							byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
+							os.write(input, 0, input.length);
+						}
+
+						// Get the response code
+						int responseCode = conn.getResponseCode();
+						System.out.println("POST Response Code :: " + responseCode);
+
+						// Close the connection
+						conn.disconnect();
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+
+				for (Player groupPlayer : AutoJoin.currentGroup) {
+					BukkitTask countdownTask = countdownTasks.remove(groupPlayer);
+					if (countdownTask != null) {
+						countdownTask.cancel();
+					}
+				}
+
+				AutoJoin.currentGroup.clear();
+			}, 20L);
+		}
+	}
+
+	private void broadcastToGroup(String message) {
+		for (Player groupPlayer : AutoJoin.currentGroup) {
+			groupPlayer.sendMessage(message);
+		}
 	}
 
 	private String generateRandomAlphanumericString() {
@@ -89,6 +243,12 @@ public class PlayerListener implements Listener {
 			builder.append(alphaNumericString.charAt(character));
 		}
 		return builder.toString();
+	}
+
+	private void updateCountdowns(long waitTimeTicks) {
+		for (Player groupPlayer : AutoJoin.currentGroup) {
+			startCountdown(groupPlayer, waitTimeTicks);
+		}
 	}
 
 	@EventHandler
@@ -135,7 +295,24 @@ public class PlayerListener implements Listener {
 		if (AutoJoin.currentGroup.contains(player)) {
 			AutoJoin.currentGroup.remove(player);
 		}
+
+		for (Map.Entry<String, Group> entry : warpOccupancy.entrySet()) {
+			if (entry.getValue().isPlayerInGroup(player)) {
+				entry.getValue().removePlayer(player);
+				if (entry.getValue().isEmpty()) {
+					// The group is empty, free up the warp
+					warpOccupancy.remove(entry.getKey());
+				}
+				break;
+			}
+		}
+
+		BukkitTask countdownTask = countdownTasks.remove(player);
+		if (countdownTask != null) {
+			countdownTask.cancel();
+		}
 	}
+
 
 	@EventHandler
 	public void onPlayerKick(PlayerKickEvent event) {
@@ -143,6 +320,11 @@ public class PlayerListener implements Listener {
 
 		if (AutoJoin.currentGroup.contains(player)) {
 			AutoJoin.currentGroup.remove(player);
+		}
+
+		BukkitTask countdownTask = countdownTasks.remove(player);
+		if (countdownTask != null) {
+			countdownTask.cancel();
 		}
 	}
 
@@ -152,4 +334,44 @@ public class PlayerListener implements Listener {
 		return utc.format(formatter);
 	}
 
+	private class TeleportTask extends BukkitRunnable {
+		private final PlayerListener playerListener;
+		private final long startTime;
+
+		public TeleportTask(PlayerListener playerListener) {
+			this.playerListener = playerListener;
+			this.startTime = System.currentTimeMillis();
+		}
+
+		@Override
+		public void run() {
+			// Teleport group if the size is less than or equal to 3
+			if (AutoJoin.currentGroup.size() <= 3) {
+				long elapsedTime = System.currentTimeMillis() - startTime;
+				long remainingTime = getWaitTime(AutoJoin.currentGroup.size()) - elapsedTime;
+				if (remainingTime <= 0) {
+					playerListener.teleportGroup();
+				} else {
+					this.runTaskLater(AutoJoin.getInstance(), remainingTime / 50);
+				}
+			} else {
+				playerListener.teleportGroup();
+			}
+		}
+
+		private long getWaitTime(int groupSize) {
+			switch (groupSize) {
+				case 1:
+					return 2 * 60 * 1000;  // 2 minutes
+				case 2:
+					return 1 * 60 * 1000;   // 1 minutes
+				default:
+					return 0;               // Instant teleport for 3 or more players
+			}
+		}
+
+		private long getRemainingTime(int groupSize, long currentTime) {
+			return getWaitTime(groupSize) - (currentTime - startTime);
+		}
+	}
 }
