@@ -39,10 +39,12 @@ import java.util.Map;
 public class PlayerListener implements Listener {
 
 	//TODO: Players get teleported to different Warps.
-	//TODO: Include world name.
 
 	private static final List<String> worlds = Arrays.asList("plai_one", "plai_two", "plai_three");
-	private static final List<String> skins = Arrays.asList("SkyTheKidRS", "Herobrine", "CaptainSparklez", "Notch");
+	private static final List<String> skins =
+			Arrays.asList("SkyTheKidRS", "Herobrine", "CaptainSparklez", "Notch", "EmileWRX", "MiriMine", "_Dragon33_", "olliknolli", "PizzaKiing97",
+					"puppymom64", "MatthawkC", "Demonspider_", "prowti", "mohamed", "emsigo", "Rauster", "GreenWylf", "Palphair",
+					"Davie504", "KingAsiimov", "ArigatoSashimi", "Frank", "Blue_Orion", "Redsoxboy");
 	private static final Map<String, Group> warpOccupancy = new HashMap<>();
 	private static final List<String> warps = Arrays.asList("r1", "r2", "r3", "r5");
 	private TeleportTask teleportTask;
@@ -116,39 +118,45 @@ public class PlayerListener implements Listener {
 				int x = AutoJoin.random.nextInt(1000) - 500;
 				final int z = AutoJoin.random.nextInt(1000) - 500;
 
-				for (final Player groupPlayer : AutoJoin.currentGroup) {
-					final int y = world.getHighestBlockYAt(x, z);
-					final Location randomLocation;
+				// pick a random warp for all in group
+				String randomWarp = null;
+				Location randomLocation = null;
 
-					if (worldName.equals("plai_three")) {
-						// pick a random warp
-						String randomWarp = warps.get(AutoJoin.random.nextInt(warps.size()));
-						try {
-							Essentials ess = (Essentials) Bukkit.getPluginManager().getPlugin("Essentials");
-							IWarps warpAPI = ess.getWarps();
-							randomLocation = warpAPI.getWarp(randomWarp);
-							if (warpOccupancy.containsKey(randomWarp) && !warpOccupancy.get(randomWarp).isEmpty()) {
-								// Warp is occupied, wait or teleport to another warp
-								continue;
-							} else {
-								// Warp is free, mark it as occupied
-								warpOccupancy.put(randomWarp, new Group(AutoJoin.currentGroup));
-							}
-						} catch (Exception e) {
-							e.printStackTrace();
-							return;
-						}
-					} else {
-						randomLocation = new Location(world, x, y, z);
+				if (worldName.equals("plai_three")) {
+					randomWarp = warps.get(AutoJoin.random.nextInt(warps.size()));
+					try {
+						Essentials ess = (Essentials) Bukkit.getPluginManager().getPlugin("Essentials");
+						IWarps warpAPI = ess.getWarps();
+						randomLocation = warpAPI.getWarp(randomWarp);
+					} catch (Exception e) {
+						e.printStackTrace();
+						return;
 					}
+				}
 
+				// If we're not in plai_three, generate a new location for each player
+				if (randomLocation == null) {
+					final int y = world.getHighestBlockYAt(x, z);
+					randomLocation = new Location(world, x, y, z);
+				}
+
+				// Check if the selected warp is occupied
+				if (warpOccupancy.containsKey(randomWarp) && !warpOccupancy.get(randomWarp).isEmpty()) {
+					// Warp is occupied, skip this teleportation attempt
+					return;
+				}
+
+				// Warp is free, mark it as occupied
+				warpOccupancy.put(randomWarp, new Group(AutoJoin.currentGroup));
+
+				for (final Player groupPlayer : AutoJoin.currentGroup) {
 					groupPlayer.teleport(randomLocation);
 					groupPlayer.setBedSpawnLocation(randomLocation, true);
 					AutoJoin.respawnLocations.put(groupPlayer.getName(), randomLocation);
 
 					groupPlayer.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 1));
 
-					groupPlayer.sendTitle("§6Type /Audio if you haven't!", getCurrentUTCTime(), 10, 70, 20);
+					groupPlayer.sendTitle("§6Type /Audio now!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
 
 					groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
@@ -156,6 +164,7 @@ public class PlayerListener implements Listener {
 
 					Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
 						Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "skin set " + groupPlayer.getName() + " " + skin);
+						Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "clear " + groupPlayer.getName());
 					});
 
 					x += 1;
@@ -271,10 +280,11 @@ public class PlayerListener implements Listener {
 	@EventHandler
 	public void onRespawn(PlayerRespawnEvent event) {
 		Player player = event.getPlayer();
+		World world = player.getWorld();
 		if (!event.isBedSpawn() && AutoJoin.respawnLocations.containsKey(player.getName())) {
 			event.setRespawnLocation(AutoJoin.respawnLocations.get(player.getName()));
 
-			player.sendTitle("§cYou've been reborn!", getCurrentUTCTime(), 10, 70, 20);
+			player.sendTitle("§cYou've been reborn!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
 
 			boolean blindnessAdded = player.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 100, 1));
 			if (!blindnessAdded) {
