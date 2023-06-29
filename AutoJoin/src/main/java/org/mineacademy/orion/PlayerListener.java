@@ -55,24 +55,40 @@ public class PlayerListener implements Listener {
 	public void onJoin(final PlayerJoinEvent event) {
 		final Player player = event.getPlayer();
 
+		// Get the lobby world
+		World lobbyWorld = Bukkit.getWorld("lobby"); // replace "lobby" with your lobby world name
+		if (lobbyWorld == null) {
+			// Handle the case where the world doesn't exist
+			// Maybe send a message to the player or log an error
+			return;
+		}
+
+		// Get the spawn location for the lobby world
+		Location lobbySpawnLocation = lobbyWorld.getSpawnLocation();
+
+		// Teleport the player to the lobby spawn location
+		player.teleport(lobbySpawnLocation);
+
 		if (AutoJoin.predefinedNames.contains(player.getName())) {
 			AutoJoin.currentGroup.add(player);
 			Common.tellLater(2, player, "§b You've been automatically assigned to a group!");
 			Common.tellLater(2, player, "§b Teleportation will commence once there are enough players or the wait time has passed.");
 
-			if (teleportTask != null) {
-				teleportTask.cancel();
+			if (teleportTask == null || teleportTask.isCancelled()) {
+				teleportTask = new TeleportTask(this);
+				long waitTimeMillis = teleportTask.getWaitTime(AutoJoin.currentGroup.size());
+				long waitTimeTicks = waitTimeMillis / 50;
+				teleportTask.runTaskLater(AutoJoin.getInstance(), waitTimeTicks);
 			}
 
-			teleportTask = new TeleportTask(this);
-			long waitTimeTicks = teleportTask.getWaitTime(AutoJoin.currentGroup.size()) / 50;
-			teleportTask.runTaskLater(AutoJoin.getInstance(), waitTimeTicks);
-
-			for (Player groupPlayer : AutoJoin.currentGroup) {
-				startCountdown(groupPlayer, waitTimeTicks);
-			}
+			// update all countdowns
+			long waitTimeMillis = teleportTask.getWaitTime(AutoJoin.currentGroup.size());
+			long waitTimeTicks = waitTimeMillis / 50;
+			updateCountdowns(waitTimeTicks);
 		}
 	}
+
+
 
 
 
@@ -141,13 +157,10 @@ public class PlayerListener implements Listener {
 				}
 
 				// Check if the selected warp is occupied
-				if (warpOccupancy.containsKey(randomWarp) && !warpOccupancy.get(randomWarp).isEmpty()) {
+				if (warpOccupancy.computeIfAbsent(randomWarp, k -> new Group(AutoJoin.currentGroup)).isEmpty()) {
 					// Warp is occupied, skip this teleportation attempt
 					return;
 				}
-
-				// Warp is free, mark it as occupied
-				warpOccupancy.put(randomWarp, new Group(AutoJoin.currentGroup));
 
 				for (final Player groupPlayer : AutoJoin.currentGroup) {
 					groupPlayer.teleport(randomLocation);
@@ -179,51 +192,7 @@ public class PlayerListener implements Listener {
 				// Send a POST to the ip-addresses of the EC2 instances so they can create a new
 				// file with the proper names for S3 bucket location.
 				for (final Player groupPlayer : AutoJoin.currentGroup) {
-					String playerName = groupPlayer.getName();
-					String currentWorld = world.getName();
-					// Get current time
-					ZonedDateTime utc = ZonedDateTime.now(ZoneOffset.UTC);
-
-					// Create a JSON object with the data
-					JSONObject jsonObject = new JSONObject();
-					jsonObject.put("username", playerName);
-					jsonObject.put("currentWorld", currentWorld);
-					jsonObject.put("time", utc.toString());
-
-					// Convert the JSON object to a string
-					String jsonInputString = jsonObject.toString();
-
-					try {
-						// Create a Url object from the IP address
-						URL url = new URL("https://2i3bwawhp6.execute-api.us-west-2.amazonaws.com/connect-mc-server-to-ec2");
-
-						// Open a connection to the URL
-						HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-
-						// Set the request method to POST
-						conn.setRequestMethod("POST");
-
-						// Set the request content type to application/json
-						conn.setRequestProperty("Content-Type", "application/json; utf-8");
-
-						// Enable input and output streams
-						conn.setDoOutput(true);
-
-						// Write the JSON input string to the output stream
-						try (OutputStream os = conn.getOutputStream()) {
-							byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
-							os.write(input, 0, input.length);
-						}
-
-						// Get the response code
-						int responseCode = conn.getResponseCode();
-						System.out.println("POST Response Code :: " + responseCode);
-
-						// Close the connection
-						conn.disconnect();
-					} catch (Exception e) {
-						e.printStackTrace();
-					}
+					sendPostRequestForPlayer(groupPlayer, world.getName());
 				}
 
 				for (Player groupPlayer : AutoJoin.currentGroup) {
@@ -235,6 +204,54 @@ public class PlayerListener implements Listener {
 
 				AutoJoin.currentGroup.clear();
 			}, 20L);
+		}
+	}
+
+	// Separate function for HTTP POST request
+	private void sendPostRequestForPlayer(final Player groupPlayer, String currentWorld) {
+		String playerName = groupPlayer.getName();
+		// Get current time
+		ZonedDateTime utc = ZonedDateTime.now(ZoneOffset.UTC);
+
+		// Create a JSON object with the data
+		JSONObject jsonObject = new JSONObject();
+		jsonObject.put("username", playerName);
+		jsonObject.put("currentWorld", currentWorld);
+		jsonObject.put("time", utc.toString());
+
+		// Convert the JSON object to a string
+		String jsonInputString = jsonObject.toString();
+
+		try {
+			// Create a Url object from the IP address
+			URL url = new URL("https://2i3bwawhp6.execute-api.us-west-2.amazonaws.com/connect-mc-server-to-ec2");
+
+			// Open a connection to the URL
+			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+			// Set the request method to POST
+			conn.setRequestMethod("POST");
+
+			// Set the request content type to application/json
+			conn.setRequestProperty("Content-Type", "application/json; utf-8");
+
+			// Enable input and output streams
+			conn.setDoOutput(true);
+
+			// Write the JSON input string to the output stream
+			try (OutputStream os = conn.getOutputStream()) {
+				byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
+				os.write(input, 0, input.length);
+			}
+
+			// Get the response code
+			int responseCode = conn.getResponseCode();
+			System.out.println("POST Response Code :: " + responseCode);
+
+			// Close the connection
+			conn.disconnect();
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
 	}
 
@@ -347,18 +364,20 @@ public class PlayerListener implements Listener {
 	private class TeleportTask extends BukkitRunnable {
 		private final PlayerListener playerListener;
 		private final long startTime;
+		private final int initialGroupSize;
 
 		public TeleportTask(PlayerListener playerListener) {
 			this.playerListener = playerListener;
 			this.startTime = System.currentTimeMillis();
+			this.initialGroupSize = AutoJoin.currentGroup.size();
 		}
 
 		@Override
 		public void run() {
-			// Teleport group if the size is less than or equal to 3
-			if (AutoJoin.currentGroup.size() <= 3) {
+			// Teleport group if the initial size was less than or equal to 3
+			if (this.initialGroupSize <= 3) {
 				long elapsedTime = System.currentTimeMillis() - startTime;
-				long remainingTime = getWaitTime(AutoJoin.currentGroup.size()) - elapsedTime;
+				long remainingTime = getWaitTime(this.initialGroupSize) - elapsedTime;
 				if (remainingTime <= 0) {
 					playerListener.teleportGroup();
 				} else {
