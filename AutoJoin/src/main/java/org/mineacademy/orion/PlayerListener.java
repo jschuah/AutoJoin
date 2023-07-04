@@ -75,6 +75,9 @@ public class PlayerListener implements Listener {
 		// Teleport the player to the lobby spawn location
 		player.teleport(lobbySpawnLocation);
 
+		// Experimental
+		player.setBedSpawnLocation(lobbySpawnLocation);
+
 		if (AutoJoin.predefinedNames.contains(player.getName())) {
 			LOGGER.info("AutoJoin predefinedNames did contain the player...");
 			AutoJoin.currentGroup.add(player);
@@ -128,7 +131,9 @@ public class PlayerListener implements Listener {
 
 
 	protected void teleportGroup() {
+		Logger LOGGER = Logger.getLogger("teleportGroup");
 		if (!AutoJoin.currentGroup.isEmpty()) {
+			LOGGER.info("teleportGroup(): currentGroup is empty");
 			Bukkit.getScheduler().runTaskLater(AutoJoin.getInstance(), () -> {
 				final String worldName = worlds.get(AutoJoin.random.nextInt(worlds.size()));
 				final World world = Bukkit.getWorld(worldName);
@@ -141,11 +146,14 @@ public class PlayerListener implements Listener {
 				Location randomLocation = null;
 
 				if (worldName.equals("plai_three")) {
+					LOGGER.info("teleportGroup(): world is plai_three");
 					randomWarp = warps.get(AutoJoin.random.nextInt(warps.size()));
 					try {
+						LOGGER.info("teleportGroup(): trying warp");
 						Essentials ess = (Essentials) Bukkit.getPluginManager().getPlugin("Essentials");
 						IWarps warpAPI = ess.getWarps();
 						randomLocation = warpAPI.getWarp(randomWarp);
+						LOGGER.info("teleportGroup(): got the random location");
 					} catch (Exception e) {
 						e.printStackTrace();
 						return;
@@ -154,6 +162,7 @@ public class PlayerListener implements Listener {
 
 				// If we're not in plai_three, generate a new location for each player
 				if (randomLocation == null) {
+					LOGGER.info("teleportGroup(): randomLocation is null");
 					final int y = world.getHighestBlockYAt(x, z);
 					randomLocation = new Location(world, x, y, z);
 				}
@@ -161,10 +170,12 @@ public class PlayerListener implements Listener {
 				// Check if the selected warp is occupied
 				if (warpOccupancy.computeIfAbsent(randomWarp, k -> new Group(AutoJoin.currentGroup)).isEmpty()) {
 					// Warp is occupied, skip this teleportation attempt
+					LOGGER.info("teleportGroup(): warp is occupied.");
 					return;
 				}
 
 				for (final Player groupPlayer : AutoJoin.currentGroup) {
+					LOGGER.info("teleportGroup(): teleporting " + groupPlayer + " to a random location.");
 					groupPlayer.teleport(randomLocation);
 					groupPlayer.setBedSpawnLocation(randomLocation, true);
 					AutoJoin.respawnLocations.put(groupPlayer.getName(), randomLocation);
@@ -185,6 +196,7 @@ public class PlayerListener implements Listener {
 					x += 1;
 
 					// Cancel any ongoing countdown for the player
+					LOGGER.info("teleportGroup(): cancelling the ongoing countdown for " + groupPlayer);
 					BukkitTask countdownTask = countdownTasks.remove(groupPlayer);
 					if (countdownTask != null) {
 						countdownTask.cancel();
@@ -331,9 +343,14 @@ public class PlayerListener implements Listener {
 
 	@EventHandler
 	public void onPlayerQuit(PlayerQuitEvent event) {
+		Logger LOGGER = Logger.getLogger("onPlayerQuit");
+
 		Player player = event.getPlayer();
 
+		LOGGER.info("onPlayerQuit: Running onPlayerQuit for " + player.getName());
+
 		if (AutoJoin.currentGroup.contains(player)) {
+			LOGGER.info("onPlayerQuit: Current group contains " + player.getName());
 			AutoJoin.currentGroup.remove(player);
 		}
 
