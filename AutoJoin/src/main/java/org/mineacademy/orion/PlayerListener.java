@@ -35,9 +35,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
-import java.util.regex.Pattern;
-import java.util.regex.Matcher;
 
 public class PlayerListener implements Listener {
 
@@ -56,30 +53,13 @@ public class PlayerListener implements Listener {
 
 	@EventHandler
 	public void onJoin(final PlayerJoinEvent event) {
-		Logger LOGGER = Logger.getLogger("onJoin");
 		final Player player = event.getPlayer();
 
-		LOGGER.info("Getting the Lobby World...");
-		// Get the lobby world
-		World lobbyWorld = Bukkit.getWorld("lobby"); // replace "lobby" with your lobby world name
-		if (lobbyWorld == null) {
-			// Handle the case where the world doesn't exist
-			// Maybe send a message to the player or log an error
-			return;
-		}
-
-		// Get the spawn location for the lobby world
-		Location lobbySpawnLocation = lobbyWorld.getSpawnLocation();
-
-		LOGGER.info("Teleporting to the lobby spawn location...");
-		// Teleport the player to the lobby spawn location
-		player.teleport(lobbySpawnLocation);
-
-		// Experimental
-		player.setBedSpawnLocation(lobbySpawnLocation);
+		Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
+			Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mv tp " + player.getName() + " lobby");
+		});
 
 		if (AutoJoin.predefinedNames.contains(player.getName())) {
-			LOGGER.info("AutoJoin predefinedNames did contain the player...");
 			AutoJoin.currentGroup.add(player);
 			Common.tellLater(2, player, "§b You've been automatically assigned to a group!");
 			Common.tellLater(2, player, "§b Teleportation will commence once there are enough players or the wait time has passed.");
@@ -97,6 +77,11 @@ public class PlayerListener implements Listener {
 			updateCountdowns(waitTimeTicks);
 		}
 	}
+
+
+
+
+
 
 	private void sendActionBar(Player player, String message, int groupSize) {
 		player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message + " Current Group Size: " + groupSize + "/3"));
@@ -131,9 +116,7 @@ public class PlayerListener implements Listener {
 
 
 	protected void teleportGroup() {
-		Logger LOGGER = Logger.getLogger("teleportGroup");
 		if (!AutoJoin.currentGroup.isEmpty()) {
-			LOGGER.info("teleportGroup(): currentGroup is empty");
 			Bukkit.getScheduler().runTaskLater(AutoJoin.getInstance(), () -> {
 				final String worldName = worlds.get(AutoJoin.random.nextInt(worlds.size()));
 				final World world = Bukkit.getWorld(worldName);
@@ -146,14 +129,11 @@ public class PlayerListener implements Listener {
 				Location randomLocation = null;
 
 				if (worldName.equals("plai_three")) {
-					LOGGER.info("teleportGroup(): world is plai_three");
 					randomWarp = warps.get(AutoJoin.random.nextInt(warps.size()));
 					try {
-						LOGGER.info("teleportGroup(): trying warp");
 						Essentials ess = (Essentials) Bukkit.getPluginManager().getPlugin("Essentials");
 						IWarps warpAPI = ess.getWarps();
 						randomLocation = warpAPI.getWarp(randomWarp);
-						LOGGER.info("teleportGroup(): got the random location");
 					} catch (Exception e) {
 						e.printStackTrace();
 						return;
@@ -162,7 +142,6 @@ public class PlayerListener implements Listener {
 
 				// If we're not in plai_three, generate a new location for each player
 				if (randomLocation == null) {
-					LOGGER.info("teleportGroup(): randomLocation is null");
 					final int y = world.getHighestBlockYAt(x, z);
 					randomLocation = new Location(world, x, y, z);
 				}
@@ -170,19 +149,17 @@ public class PlayerListener implements Listener {
 				// Check if the selected warp is occupied
 				if (warpOccupancy.computeIfAbsent(randomWarp, k -> new Group(AutoJoin.currentGroup)).isEmpty()) {
 					// Warp is occupied, skip this teleportation attempt
-					LOGGER.info("teleportGroup(): warp is occupied.");
 					return;
 				}
 
 				for (final Player groupPlayer : AutoJoin.currentGroup) {
-					LOGGER.info("teleportGroup(): teleporting " + groupPlayer + " to a random location.");
 					groupPlayer.teleport(randomLocation);
 					groupPlayer.setBedSpawnLocation(randomLocation, true);
 					AutoJoin.respawnLocations.put(groupPlayer.getName(), randomLocation);
 
 					groupPlayer.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 1));
 
-					groupPlayer.sendTitle("§6Have fun!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
+					groupPlayer.sendTitle("§6Type /Audio now!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
 
 					groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
@@ -196,7 +173,6 @@ public class PlayerListener implements Listener {
 					x += 1;
 
 					// Cancel any ongoing countdown for the player
-					LOGGER.info("teleportGroup(): cancelling the ongoing countdown for " + groupPlayer);
 					BukkitTask countdownTask = countdownTasks.remove(groupPlayer);
 					if (countdownTask != null) {
 						countdownTask.cancel();
@@ -205,8 +181,9 @@ public class PlayerListener implements Listener {
 
 				// Send a POST to the ip-addresses of the EC2 instances so they can create a new
 				// file with the proper names for S3 bucket location.
+				ZonedDateTime utc = ZonedDateTime.now(ZoneOffset.UTC);
 				for (final Player groupPlayer : AutoJoin.currentGroup) {
-					sendPostRequestForPlayer(groupPlayer, world.getName());
+					sendPostRequestForPlayer(groupPlayer, world.getName(), utc);
 				}
 
 				for (Player groupPlayer : AutoJoin.currentGroup) {
@@ -222,12 +199,9 @@ public class PlayerListener implements Listener {
 	}
 
 	// Separate function for HTTP POST request
-	private void sendPostRequestForPlayer(final Player groupPlayer, String currentWorld) {
-		Logger LOGGER = Logger.getLogger("sendPostRequestForPlayer");
-
+	private void sendPostRequestForPlayer(final Player groupPlayer, String currentWorld, ZonedDateTime utc) {
 		String playerName = groupPlayer.getName();
 		// Get current time
-		ZonedDateTime utc = ZonedDateTime.now(ZoneOffset.UTC);
 
 		// Create a JSON object with the data
 		JSONObject jsonObject = new JSONObject();
@@ -237,16 +211,6 @@ public class PlayerListener implements Listener {
 
 		// Convert the JSON object to a string
 		String jsonInputString = jsonObject.toString();
-
-		Pattern pattern = Pattern.compile("^PLAI_[0-9]{1,3}$");
-		Matcher matcher = pattern.matcher(playerName);
-
-		if (matcher.find()) {
-			LOGGER.info("sendPostRequestForPlayer(): " + playerName + " follows the pattern!");
-		} else {
-			LOGGER.info("sendPostRequestForPlayer(): " + playerName + " does not follow the pattern.");
-			return;
-		}
 
 		try {
 			// Create a Url object from the IP address
@@ -343,14 +307,9 @@ public class PlayerListener implements Listener {
 
 	@EventHandler
 	public void onPlayerQuit(PlayerQuitEvent event) {
-		Logger LOGGER = Logger.getLogger("onPlayerQuit");
-
 		Player player = event.getPlayer();
 
-		LOGGER.info("onPlayerQuit: Running onPlayerQuit for " + player.getName());
-
 		if (AutoJoin.currentGroup.contains(player)) {
-			LOGGER.info("onPlayerQuit: Current group contains " + player.getName());
 			AutoJoin.currentGroup.remove(player);
 		}
 
@@ -435,5 +394,3 @@ public class PlayerListener implements Listener {
 		}
 	}
 }
-
-//END OF CODE
