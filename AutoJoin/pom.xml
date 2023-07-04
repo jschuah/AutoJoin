@@ -82,6 +82,13 @@
             <artifactId>Foundation</artifactId>
             <version>${foundation.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20230618</version>
+        </dependency>
+
     </dependencies>
 
     <!-- DO NOT EDIT unless instructed to do so or you know what you're doing. -->
@@ -128,6 +135,7 @@
                     <artifactSet>
                         <includes>
                             <include>${foundation.path}:Foundation*</include>
+                            <include>org.json:json</include>
                         </includes>
                     </artifactSet>
                     <relocations>
