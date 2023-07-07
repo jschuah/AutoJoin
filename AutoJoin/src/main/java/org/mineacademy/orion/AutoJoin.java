@@ -14,7 +14,7 @@ public class AutoJoin extends SimplePlugin {
 	public static Map<String, Location> respawnLocations = new HashMap<>();
 	public static Random random = new Random();
 
-	private static AutoJoin instance;  // This is the new line
+	private static AutoJoin instance;
 
 	@Override
 	protected void onPluginStart() {
@@ -22,6 +22,8 @@ public class AutoJoin extends SimplePlugin {
 
 		registerEvents(new PlayerListener());
 
+
+		//TODO: ADD NAMES HERE
 		predefinedNames.add("PLAI_1");
 		predefinedNames.add("PLAI_2");
 		predefinedNames.add("PLAI_5");
@@ -29,12 +31,13 @@ public class AutoJoin extends SimplePlugin {
 		predefinedNames.add("KingAsiimov");
 		predefinedNames.add("KingAsiimovX");
 		predefinedNames.add("ArigatoSashimi");
+		predefinedNames.add("PLAI_6");
 
-		instance = this;  // Set the instance
+		instance = this;
 	}
 
 
 	public static AutoJoin getInstance() {
-		return instance;  // Getter for the instance
+		return instance;
 	}
 }
