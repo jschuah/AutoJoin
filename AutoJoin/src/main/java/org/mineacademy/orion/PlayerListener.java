@@ -49,6 +49,7 @@ public class PlayerListener implements Listener {
 	private static final List<String> warps = Arrays.asList("r1", "r2", "r3", "r5");
 	private TeleportTask teleportTask;
 	private final Map<Player, BukkitTask> countdownTasks = new HashMap<>();
+	private final int capacityNum = 3;
 
 
 	@EventHandler
@@ -75,6 +76,14 @@ public class PlayerListener implements Listener {
 			long waitTimeMillis = teleportTask.getWaitTime(AutoJoin.currentGroup.size());
 			long waitTimeTicks = waitTimeMillis / 50;
 			updateCountdowns(waitTimeTicks);
+		}
+
+		if (AutoJoin.currentGroup.size() < capacityNum){
+			Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
+				Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "§ebroadcast there are currently "
+						+ AutoJoin.currentGroup.size() + " out of a possible " + capacityNum +
+						" players waiting to join a session. Join the session and play Minecraft for Science!");
+			});
 		}
 	}
 
@@ -159,7 +168,7 @@ public class PlayerListener implements Listener {
 
 					groupPlayer.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 1));
 
-					groupPlayer.sendTitle("§6Type /Audio now!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
+					groupPlayer.sendTitle("§6Have Fun!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
 
 					groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
@@ -365,7 +374,7 @@ public class PlayerListener implements Listener {
 		@Override
 		public void run() {
 			// Teleport group if the initial size was less than or equal to 3
-			if (this.initialGroupSize <= 3) {
+			if (this.initialGroupSize <= capacityNum) {
 				long elapsedTime = System.currentTimeMillis() - startTime;
 				long remainingTime = getWaitTime(this.initialGroupSize) - elapsedTime;
 				if (remainingTime <= 0) {
