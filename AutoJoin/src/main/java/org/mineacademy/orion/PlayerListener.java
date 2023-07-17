@@ -1,8 +1,16 @@
 package org.mineacademy.orion;
 
 import com.earth2me.essentials.Essentials;
+import com.earth2me.essentials.User;
+import jakarta.mail.MessagingException;
+import jakarta.mail.Transport;
+import jakarta.mail.internet.InternetAddress;
 import net.ess3.api.IWarps;
+import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.ClickEvent;
+import net.md_5.bungee.api.chat.ComponentBuilder;
+import net.md_5.bungee.api.chat.HoverEvent;
 import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -12,11 +20,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerKickEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.*;
 import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -31,14 +37,12 @@ import java.nio.charset.StandardCharsets;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+
+import static org.bukkit.Bukkit.getServer;
+
 
 public class PlayerListener implements Listener {
-
-	//TODO: Players get teleported to different Warps.
 
 	private static final List<String> worlds = Arrays.asList("plai_one", "plai_two", "plai_three");
 	private static final List<String> skins =
@@ -50,15 +54,33 @@ public class PlayerListener implements Listener {
 	private TeleportTask teleportTask;
 	private final Map<Player, BukkitTask> countdownTasks = new HashMap<>();
 	private final int capacityNum = 3;
-
+	private BukkitTask groupCountdownTask;
+	private long groupTimeRemaining;
+	private Set<Player> extendVotes = new HashSet<>();
+	private int maxExtensionCount = 3; // Maximum number of times the group can extend the timer
+	private int extendCount = 0; // Number of times the timer has been extended
+	private int extendInterval = 30; // Extension Amount
+	private Map<UUID, Integer> playerExtensionCounts = new HashMap<>();
+	private static final List<String> genderNeutralNames = Arrays.asList("Alex", "Casey", "Jordan", "Taylor", "Jamie", "Robin", "Charlie", "Avery", "Morgan", "Riley", "Bailey", "Peyton", "Cameron", "Devon", "Drew", "Reese", "Sydney", "Skyler", "Pat", "Sam");
+	private static String worldGlobal = "";
 
 	@EventHandler
 	public void onJoin(final PlayerJoinEvent event) {
 		final Player player = event.getPlayer();
 
-		Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
-			Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mv tp " + player.getName() + " lobby");
-		});
+		if (AutoJoin.predefinedNames.contains(player.getName())) {
+			Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
+				Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mv tp " + player.getName() + " BedWars");
+			});
+		} else {
+			Bukkit.getScheduler().runTask(AutoJoin.getInstance(), () -> {
+				Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "mv tp " + player.getName() + " Lobby");
+			});
+		}
+
+		// Reset the extension count when player joins a new group
+		playerExtensionCounts.put(player.getUniqueId(), 0);
+
 
 		if (AutoJoin.predefinedNames.contains(player.getName())) {
 			AutoJoin.currentGroup.add(player);
@@ -85,47 +107,156 @@ public class PlayerListener implements Listener {
 						" players waiting to join a session. Join the session and play Minecraft for Science!");
 			});
 		}
+		if (AutoJoin.currentGroup.size() == 1) {
+			// Schedule a task to send email after X minutes
+			Bukkit.getScheduler().runTaskLater(AutoJoin.getInstance(), () -> {
+				if (AutoJoin.currentGroup.size() == 1) {
+					// Only one player has been in the group for 1 minute
+					sendEmail("chuah.jun.sean@gmail.com", "Only one player",
+							"There's only one player left in the server and they've been waiting for 3 minutes.");
+				}
+			}, 20L * 60L * 1L); //After 2 Minutes, EMAIL WILL BE SENT
+		}
 	}
 
+	public void sendEmail(String recipient, String subject, String body) {
+		Player player = AutoJoin.currentGroup.get(AutoJoin.currentGroup.size() - 1);  // Retrieves the last player
+		final String username = "plaicraftmc@gmail.com";
+		final String appPassword = "wtqxlnpvmovygeis";
 
+		Properties props = new Properties();
+		props.put("mail.smtp.auth", "true");
+		props.put("mail.smtp.starttls.enable", "true");
+		props.put("mail.smtp.host", "smtp.gmail.com");
+		props.put("mail.smtp.port", "587");
 
+		jakarta.mail.Session session = jakarta.mail.Session.getInstance(props, new jakarta.mail.Authenticator() {
+			@Override
+			protected jakarta.mail.PasswordAuthentication getPasswordAuthentication() {
+				return new jakarta.mail.PasswordAuthentication(username, appPassword);
+			}
+		});
 
+		try {
+			jakarta.mail.Message message = new jakarta.mail.internet.MimeMessage(session);
+			message.setFrom(new InternetAddress(username));
+			message.setRecipients(jakarta.mail.Message.RecipientType.TO, InternetAddress.parse(recipient));
+			message.setSubject(subject);
+			message.setText(body);
 
+			Transport.send(message);
+
+			System.out.println("Email sent successfully");
+			player.sendMessage("§bAn email has been sent due to low group size.");
+
+		} catch (MessagingException e) {
+			throw new RuntimeException(e);
+		}
+	}
 
 	private void sendActionBar(Player player, String message, int groupSize) {
 		player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(message + " Current Group Size: " + groupSize + "/3"));
 	}
 
 	private void startCountdown(Player player, long waitTimeTicks) {
-		if (countdownTasks.containsKey(player)) {
-			countdownTasks.get(player).cancel();
+		if (groupCountdownTask != null) {
+			groupCountdownTask.cancel();
 		}
 
-		BukkitTask countdownTask = new BukkitRunnable() {
-			private long timeRemaining = waitTimeTicks;
+		groupTimeRemaining = waitTimeTicks;
 
+		groupCountdownTask = new BukkitRunnable() {
 			@Override
 			public void run() {
-				if (timeRemaining <= 0) {
+				if (groupTimeRemaining <= 0) {
 					this.cancel();
-					countdownTasks.remove(player);
 					if (AutoJoin.currentGroup.contains(player)) {
 						teleportGroup();
 					}
+					groupTimeRemaining -= 20;
+				} else if (groupTimeRemaining <= 30 * 20) {
+					for (Player groupPlayer : AutoJoin.currentGroup) {
+						sendActionBar(groupPlayer, "Teleporting in " + groupTimeRemaining / 20 + " seconds...", AutoJoin.currentGroup.size());
+						if (groupTimeRemaining % (10 * 20) == 0) {
+							extendVotes.clear();
+							sendChatExtensionOption(groupPlayer, groupTimeRemaining); // Pass groupTimeRemaining here
+						}
+					}
+					groupTimeRemaining -= 20;
 				} else {
-					sendActionBar(player, "Teleporting in " + timeRemaining / 20 + " seconds...", AutoJoin.currentGroup.size());
-					timeRemaining -= 20;
+					for (Player groupPlayer : AutoJoin.currentGroup) {
+						sendActionBar(groupPlayer, "Teleporting in " + groupTimeRemaining / 20 + " seconds...", AutoJoin.currentGroup.size());
+					}
+					groupTimeRemaining -= 20;
 				}
 			}
 		}.runTaskTimer(AutoJoin.getInstance(), 0, 20);
+	}
 
-		countdownTasks.put(player, countdownTask);
+
+	@EventHandler
+	public void onCommand(PlayerCommandPreprocessEvent event) {
+		Player player = event.getPlayer();
+		String cmd = event.getMessage().split(" ")[0];
+		UUID playerUUID = player.getUniqueId();
+
+		if (cmd.equalsIgnoreCase("/extend")) {
+			event.setCancelled(true); // Cancel the event so the command doesn't actually run
+
+			if (groupCountdownTask != null && playerExtensionCounts.getOrDefault(playerUUID, 0) < maxExtensionCount) {
+				voteToExtend(player);
+			} else {
+				TextComponent message = new TextComponent("You cannot extend anymore.");
+				for (Player groupPlayer : AutoJoin.currentGroup) {
+					groupPlayer.spigot().sendMessage(message);
+				}
+			}
+		}
+	}
+
+
+	private void sendChatExtensionOption(Player player, long timeRemaining) {
+		TextComponent message = new TextComponent("Teleporting in " + timeRemaining / 20 + " seconds. Click here to extend the timer.");
+		message.setColor(ChatColor.GREEN);
+		message.setClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/extend"));
+		message.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new ComponentBuilder("Click to extend the timer!").create()));
+		player.spigot().sendMessage(message);
+	}
+
+	private void voteToExtend(Player player) {
+		extendVotes.add(player);
+		UUID playerUUID = player.getUniqueId();
+
+		if (extendVotes.size() < AutoJoin.currentGroup.size()) {
+			String message = "Extend votes: " + extendVotes.size() + "/" + AutoJoin.currentGroup.size() + ". Everybody has to vote to extend the timer.";
+			for (Player groupPlayer : AutoJoin.currentGroup) {
+				groupPlayer.sendMessage(message);
+			}
+		} else {
+			extendTimer();
+
+			// Increase the count of extensions for this player
+			playerExtensionCounts.put(playerUUID, playerExtensionCounts.getOrDefault(playerUUID, 0) + 1);
+		}
 	}
 
 
 
+	private void extendTimer() {
+		if (extendVotes.size() >= AutoJoin.currentGroup.size()) {
+			groupTimeRemaining += extendInterval * 20; // Extend by 30 seconds
+			TextComponent message = new TextComponent("The timer has been extended by " + extendInterval + " seconds");
+			for (Player groupPlayer : AutoJoin.currentGroup) {
+				groupPlayer.spigot().sendMessage(message);
+			}
+			extendVotes.clear(); // Clear the votes for the next round
+			extendCount++; // Increase the count of extensions
+		}
+	}
+
 	protected void teleportGroup() {
 		if (!AutoJoin.currentGroup.isEmpty()) {
+
 			Bukkit.getScheduler().runTaskLater(AutoJoin.getInstance(), () -> {
 				final String worldName = worlds.get(AutoJoin.random.nextInt(worlds.size()));
 				final World world = Bukkit.getWorld(worldName);
@@ -136,6 +267,8 @@ public class PlayerListener implements Listener {
 				// pick a random warp for all in group
 				String randomWarp = null;
 				Location randomLocation = null;
+
+				worldGlobal = worldName;
 
 				if (worldName.equals("plai_three")) {
 					randomWarp = warps.get(AutoJoin.random.nextInt(warps.size()));
@@ -162,13 +295,21 @@ public class PlayerListener implements Listener {
 				}
 
 				for (final Player groupPlayer : AutoJoin.currentGroup) {
+					// Teleport the player
 					groupPlayer.teleport(randomLocation);
+
 					groupPlayer.setBedSpawnLocation(randomLocation, true);
 					AutoJoin.respawnLocations.put(groupPlayer.getName(), randomLocation);
 
 					groupPlayer.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 1));
 
 					groupPlayer.sendTitle("§6Have Fun!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
+
+					// Generate a random name for the session
+					String randomName = genderNeutralNames.get(AutoJoin.random.nextInt(genderNeutralNames.size()));
+
+					// Inform the player of their name for the session
+					groupPlayer.sendMessage(ChatColor.BOLD + "" + ChatColor.DARK_PURPLE + "Your name for the session is " + randomName);
 
 					groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
@@ -186,6 +327,9 @@ public class PlayerListener implements Listener {
 					if (countdownTask != null) {
 						countdownTask.cancel();
 					}
+
+					// Reset the extension count when player joins a new group
+					playerExtensionCounts.put(groupPlayer.getUniqueId(), 0);
 				}
 
 				// Send a POST to the ip-addresses of the EC2 instances so they can create a new
@@ -195,18 +339,16 @@ public class PlayerListener implements Listener {
 					sendPostRequestForPlayer(groupPlayer, world.getName(), utc);
 				}
 
-				for (Player groupPlayer : AutoJoin.currentGroup) {
-					BukkitTask countdownTask = countdownTasks.remove(groupPlayer);
-					if (countdownTask != null) {
-						countdownTask.cancel();
-					}
-				}
-
+				// Clear the current group
 				AutoJoin.currentGroup.clear();
+
 			}, 20L);
 		}
 	}
 
+
+
+	//TODO: Review
 	// Separate function for HTTP POST request
 	private void sendPostRequestForPlayer(final Player groupPlayer, String currentWorld, ZonedDateTime utc) {
 		String playerName = groupPlayer.getName();
@@ -217,6 +359,7 @@ public class PlayerListener implements Listener {
 		jsonObject.put("username", playerName);
 		jsonObject.put("currentWorld", currentWorld);
 		jsonObject.put("time", utc.toString());
+		jsonObject.put("endPoint", "world-data");
 
 		// Convert the JSON object to a string
 		String jsonInputString = jsonObject.toString();
@@ -254,20 +397,52 @@ public class PlayerListener implements Listener {
 		}
 	}
 
-	private void broadcastToGroup(String message) {
-		for (Player groupPlayer : AutoJoin.currentGroup) {
-			groupPlayer.sendMessage(message);
-		}
-	}
+	//TODO: Review
+	private void sendPostRequestForAFKPlayer(final Player groupPlayer, String currentWorld, ZonedDateTime utc, String instanceId) {
+		String playerName = groupPlayer.getName();
 
-	private String generateRandomAlphanumericString() {
-		String alphaNumericString = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-		StringBuilder builder = new StringBuilder();
-		for(int i = 0; i < 5; i++) {
-			int character = (int)(Math.random() * alphaNumericString.length());
-			builder.append(alphaNumericString.charAt(character));
+		// Create a JSON object with the data
+		JSONObject jsonObject = new JSONObject();
+		jsonObject.put("username", playerName);
+		jsonObject.put("currentWorld", currentWorld);
+		jsonObject.put("time", utc.toString());
+		jsonObject.put("instanceId", instanceId);
+		jsonObject.put("status", "afk-kicked");  // Status indicating player was kicked due to being AFK
+
+		// Convert the JSON object to a string
+		String jsonInputString = jsonObject.toString();
+
+		try {
+			// Create a Url object from the IP address
+			URL url = new URL("https://2i3bwawhp6.execute-api.us-west-2.amazonaws.com/connect-mc-server-to-ec2");
+
+			// Open a connection to the URL
+			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+			// Set the request method to POST
+			conn.setRequestMethod("POST");
+
+			// Set the request content type to application/json
+			conn.setRequestProperty("Content-Type", "application/json; utf-8");
+
+			// Enable input and output streams
+			conn.setDoOutput(true);
+
+			// Write the JSON input string to the output stream
+			try (OutputStream os = conn.getOutputStream()) {
+				byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
+				os.write(input, 0, input.length);
+			}
+
+			// Get the response code
+			int responseCode = conn.getResponseCode();
+			System.out.println("POST Response Code :: " + responseCode);
+
+			// Close the connection
+			conn.disconnect();
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
-		return builder.toString();
 	}
 
 	private void updateCountdowns(long waitTimeTicks) {
@@ -318,6 +493,7 @@ public class PlayerListener implements Listener {
 	public void onPlayerQuit(PlayerQuitEvent event) {
 		Player player = event.getPlayer();
 
+
 		if (AutoJoin.currentGroup.contains(player)) {
 			AutoJoin.currentGroup.remove(player);
 		}
@@ -337,12 +513,39 @@ public class PlayerListener implements Listener {
 		if (countdownTask != null) {
 			countdownTask.cancel();
 		}
+
+		UUID playerUUID = event.getPlayer().getUniqueId();
+
+		// Decrease the extendCount for the player when they leave the server
+		if (playerExtensionCounts.containsKey(playerUUID) && playerExtensionCounts.get(playerUUID) > 0) {
+			playerExtensionCounts.put(playerUUID, playerExtensionCounts.get(playerUUID) - 1);
+		}
+
 	}
 
-
+//TODO: REVIEW
 	@EventHandler
 	public void onPlayerKick(PlayerKickEvent event) {
 		Player player = event.getPlayer();
+
+		// Get EssentialsX plugin
+		Plugin plugin = getServer().getPluginManager().getPlugin("Essentials");
+
+		// Make sure Essentials is loaded
+		if (plugin == null || !(plugin instanceof Essentials)) {
+			// EssentialsX isn't loaded
+			return;
+		}
+
+		Essentials essentials = (Essentials) plugin;
+
+		// Get the Essentials user
+		User user = essentials.getUser(player);
+
+		// Check if the player is AFK
+		if (user.isAfk()) {
+			sendPostRequestForAFKPlayer(player, worldGlobal, ZonedDateTime.now(ZoneOffset.UTC), "instanceId");
+		}
 
 		if (AutoJoin.currentGroup.contains(player)) {
 			AutoJoin.currentGroup.remove(player);
@@ -352,6 +555,7 @@ public class PlayerListener implements Listener {
 		if (countdownTask != null) {
 			countdownTask.cancel();
 		}
+
 	}
 
 	private String getCurrentUTCTime() {
@@ -390,9 +594,9 @@ public class PlayerListener implements Listener {
 		private long getWaitTime(int groupSize) {
 			switch (groupSize) {
 				case 1:
-					return 2 * 60 * 1000;  // 2 minutes
+					return 2 * 60 * 1000;  // 5 minutes
 				case 2:
-					return 1 * 60 * 1000;   // 1 minutes
+					return 1 * 60 * 1000;   // 2 minutes
 				default:
 					return 0;               // Instant teleport for 3 or more players
 			}
