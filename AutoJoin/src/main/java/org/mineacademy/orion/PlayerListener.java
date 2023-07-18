@@ -30,6 +30,8 @@ import org.bukkit.scheduler.BukkitTask;
 import org.json.JSONObject;
 import org.mineacademy.fo.Common;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -305,11 +307,20 @@ public class PlayerListener implements Listener {
 
 					groupPlayer.sendTitle("§6Have Fun!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
 
-					// Generate a random name for the session
-					String randomName = genderNeutralNames.get(AutoJoin.random.nextInt(genderNeutralNames.size()));
+					//TODO: Review 
+					
+					// Instead of generating a random name for the session, we now retrieve the associated name
+					String associatedName = retrieveAssociatedName(groupPlayer.getName());
 
 					// Inform the player of their name for the session
-					groupPlayer.sendMessage(ChatColor.BOLD + "" + ChatColor.DARK_PURPLE + "Your name for the session is " + randomName);
+					groupPlayer.sendMessage(ChatColor.BOLD + "" + ChatColor.DARK_PURPLE + "Your name for the session is " + associatedName);
+
+
+//					// Generate a random name for the session
+//					String randomName = genderNeutralNames.get(AutoJoin.random.nextInt(genderNeutralNames.size()));
+//
+//					// Inform the player of their name for the session
+//					groupPlayer.sendMessage(ChatColor.BOLD + "" + ChatColor.DARK_PURPLE + "Your name for the session is " + randomName);
 
 					groupPlayer.playSound(groupPlayer.getLocation(), Sound.ENTITY_ENDER_DRAGON_GROWL, 1.0f, 1.0f);
 
@@ -346,9 +357,66 @@ public class PlayerListener implements Listener {
 		}
 	}
 
+	
+	//TODO: Review 
+	// Separate function to retrieve associated name from AWS Lambda function
+	private String retrieveAssociatedName(final String minecraftUsername) {
+		// Create a JSON object with the Minecraft username
+		JSONObject jsonObject = new JSONObject();
+		jsonObject.put("username", minecraftUsername);
+
+		// Convert the JSON object to a string
+		String jsonInputString = jsonObject.toString();
+
+		String associatedName = "";
+
+		try {
+			// Create a URL object from your AWS Lambda function endpoint
+			URL url = new URL("https://2i3bwawhp6.execute-api.us-west-2.amazonaws.com/connect-mc-server-to-ec2");
+
+			// Open a connection to the URL
+			HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+
+			// Set the request method to POST
+			conn.setRequestMethod("POST");
+
+			// Set the request content type to application/json
+			conn.setRequestProperty("Content-Type", "application/json; utf-8");
+
+			// Enable input and output streams
+			conn.setDoOutput(true);
+
+			// Write the JSON input string to the output stream
+			try (OutputStream os = conn.getOutputStream()) {
+				byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
+				os.write(input, 0, input.length);
+			}
+
+			// Get the response
+			try(BufferedReader br = new BufferedReader(
+					new InputStreamReader(conn.getInputStream(), StandardCharsets.UTF_8))) {
+				StringBuilder response = new StringBuilder();
+				String responseLine = null;
+				while ((responseLine = br.readLine()) != null) {
+					response.append(responseLine.trim());
+				}
+				associatedName = response.toString();
+			}
+
+			// Get the response code
+			int responseCode = conn.getResponseCode();
+			System.out.println("POST Response Code :: " + responseCode);
+
+			// Close the connection
+			conn.disconnect();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		return associatedName;
+	}
 
 
-	//TODO: Review
 	// Separate function for HTTP POST request
 	private void sendPostRequestForPlayer(final Player groupPlayer, String currentWorld, ZonedDateTime utc) {
 		String playerName = groupPlayer.getName();
@@ -359,7 +427,7 @@ public class PlayerListener implements Listener {
 		jsonObject.put("username", playerName);
 		jsonObject.put("currentWorld", currentWorld);
 		jsonObject.put("time", utc.toString());
-		jsonObject.put("endPoint", "world-data");
+		jsonObject.put("endpoint", "world-data");
 
 		// Convert the JSON object to a string
 		String jsonInputString = jsonObject.toString();
@@ -396,9 +464,8 @@ public class PlayerListener implements Listener {
 			e.printStackTrace();
 		}
 	}
-
-	//TODO: Review
-	private void sendPostRequestForAFKPlayer(final Player groupPlayer, String currentWorld, ZonedDateTime utc, String instanceId) {
+	
+	private void sendPostRequestForAFKPlayer(final Player groupPlayer, String currentWorld, ZonedDateTime utc) {
 		String playerName = groupPlayer.getName();
 
 		// Create a JSON object with the data
@@ -406,8 +473,7 @@ public class PlayerListener implements Listener {
 		jsonObject.put("username", playerName);
 		jsonObject.put("currentWorld", currentWorld);
 		jsonObject.put("time", utc.toString());
-		jsonObject.put("instanceId", instanceId);
-		jsonObject.put("status", "afk-kicked");  // Status indicating player was kicked due to being AFK
+		jsonObject.put("endpoint", "afk");  // Status indicating player was kicked due to being AFK
 
 		// Convert the JSON object to a string
 		String jsonInputString = jsonObject.toString();
@@ -523,10 +589,12 @@ public class PlayerListener implements Listener {
 
 	}
 
-//TODO: REVIEW
 	@EventHandler
 	public void onPlayerKick(PlayerKickEvent event) {
+
 		Player player = event.getPlayer();
+
+		System.out.println(player + " just got kicked!");
 
 		// Get EssentialsX plugin
 		Plugin plugin = getServer().getPluginManager().getPlugin("Essentials");
@@ -537,15 +605,15 @@ public class PlayerListener implements Listener {
 			return;
 		}
 
+		System.out.println("Detected Essentials");
+
 		Essentials essentials = (Essentials) plugin;
 
 		// Get the Essentials user
 		User user = essentials.getUser(player);
 
-		// Check if the player is AFK
-		if (user.isAfk()) {
-			sendPostRequestForAFKPlayer(player, worldGlobal, ZonedDateTime.now(ZoneOffset.UTC), "instanceId");
-		}
+		sendPostRequestForAFKPlayer(player, worldGlobal, ZonedDateTime.now(ZoneOffset.UTC));
+		System.out.println("Sent post Request from onPlayerKick AutoJoin!");
 
 		if (AutoJoin.currentGroup.contains(player)) {
 			AutoJoin.currentGroup.remove(player);
