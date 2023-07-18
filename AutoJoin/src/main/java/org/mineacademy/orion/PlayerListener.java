@@ -307,8 +307,8 @@ public class PlayerListener implements Listener {
 
 					groupPlayer.sendTitle("§6Have Fun!", "§6World: " + world.getName() + " | Time: " + getCurrentUTCTime(), 10, 70, 20);
 
-					//TODO: Review 
-					
+					//TODO: Review
+
 					// Instead of generating a random name for the session, we now retrieve the associated name
 					String associatedName = retrieveAssociatedName(groupPlayer.getName());
 
@@ -357,8 +357,8 @@ public class PlayerListener implements Listener {
 		}
 	}
 
-	
-	//TODO: Review 
+
+	//TODO: Review
 	// Separate function to retrieve associated name from AWS Lambda function
 	private String retrieveAssociatedName(final String minecraftUsername) {
 		// Create a JSON object with the Minecraft username
@@ -464,7 +464,7 @@ public class PlayerListener implements Listener {
 			e.printStackTrace();
 		}
 	}
-	
+
 	private void sendPostRequestForAFKPlayer(final Player groupPlayer, String currentWorld, ZonedDateTime utc) {
 		String playerName = groupPlayer.getName();
 
